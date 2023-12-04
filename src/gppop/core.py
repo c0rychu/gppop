@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-__author__="Anarya Ray"
+__author__="Anarya Ray <anarya.ray@ligo.org>; Siddharth Mohite <siddharth.mohite@ligo.org>"
 
 
 import numpy as np
@@ -12,7 +12,7 @@ from astropy.cosmology import Planck15,z_at_value
 from astropy import units as u
 from scipy.interpolate import interp1d
 from scipy.integrate import cumtrapz
-import sys
+import warnings
 
 ############################
 #  Support Functions       #
@@ -241,7 +241,7 @@ class Utils():
         return log_lower_tri_sorted
             
                 
-    def construct_1dtond_matrix(self,nbins_m,values,nbins_z):
+    def construct_1dtond_matrix(self,nbins_m,values,nbins_z, tril=True):
         '''
         Inverse of arraynd_to_tril() Returns a n-D
         represenation matrix of a given set of the lower
@@ -264,13 +264,14 @@ class Utils():
             n-D symmetric array using values.
         '''
         k=0
-
-        matrix = np.zeros([nbins_m,nbins_m,nbins_z])
+        if len(values.shape)>1:
+            matrix = np.zeros((nbins_m,nbins_m,nbins_z)+values.shape[1:])
+        else:
+            matrix = np.zeros((nbins_m,nbins_m,nbins_z))
         for l in range(nbins_z):
             for i in range(nbins_m):
-                for j in range(i+1):
+                for j in range(i+1 if tril else nbins_m ):
                     matrix[i,j,l] = values[k]
-                    #matrix[j,i] = values[k]
                     k+=1
             
         return matrix
@@ -350,8 +351,7 @@ class Utils():
                     delta_logz_array[i,j,k] = dz
 
         return self.arraynd_to_tril(delta_logz_array)
-        
-
+    
 class Post_Proc_Utils(Utils):
     """
     Postprocessing Utilities for GP 
@@ -680,6 +680,51 @@ class Post_Proc_Utils(Utils):
             Z = np.append(Z, z_array)
         return Z,Rz
     
+    def get_Rq(self,n_corr,qs,tril_edges,mmin=None,mmax=None):
+        '''
+        Function for computing the marginalized dR/dq
+        
+        Parameters
+        ----------
+        
+        n_corr                  ::   numpy.ndarray
+                                     1d array containing a rate density sample in each bin
+                                     of shape (nbins,)
+                                     
+        Qs                      ::   numpy.ndarray
+                                     1d array containing values of q at which to evalute dR/dq
+                                     
+        tril_edges              ::   numpy.ndarray
+                                     array containing values of m1 bin edges in lower triangular format
+                                     (output of Utils.tril_edges() function)
+        
+        mmin                    ::    float
+                                      minimum value of m1 used when marginalizing over m1. Default is None in which case
+                                      the lowest m1 bin edge is used
+        
+        mmax                    ::    float
+                                      maximum value of m1 used when marginalizing over m1. Default is None in which case
+                                      the highest m1 bin edge is used
+        
+        Returns
+        -------
+        
+        dR/dq   : numpy.ndarray
+                    1d array containing dR/dq evaluated at the supplied values of Qs
+        '''
+        mmin = min(self.mbins) if mmin is None else mmin
+        mmax = max(self.mbins) if mmax is None else mmax
+        ones = np.ones_like(qs)[:,np.newaxis]
+        m1_max = np.minimum(tril_edges[np.newaxis,:,1,0]*ones,tril_edges[np.newaxis,:,1,1]/(qs[:,np.newaxis]))
+        m1_min = np.maximum(tril_edges[np.newaxis,:,0,0]*ones,tril_edges[np.newaxis,:,0,1]/(qs[:,np.newaxis]))
+        imask1 = m1_min<m1_max
+        mask2 = np.where((tril_edges[np.newaxis,:,0,0]*ones>mmin)*(tril_edges[np.newaxis,:,1,0]*ones<mmax))
+        n_corr_at_idx = np.repeat(n_corr[np.newaxis,:],len(qs),axis=0)
+        n_corr_at_idx[imask1] *= np.log(m1_max[imask1])-np.log(m1_min[imask1])
+        n_corr_at_idx[~imask1] = 0
+        n_corr_at_idx[mask2] = 0
+        return np.sum(n_corr_at_idx/(qs[:,np.newaxis]),axis=1)
+
     def get_pm1m2z(self,n_corr,m1s,m2s,zs,tril_edges):
         '''
         Function for computing p(m1,m2,z) = dN/dm1dm2dz as afunction of
@@ -720,7 +765,7 @@ class Post_Proc_Utils(Utils):
         n_corr_at_idx[:,bin_idx] = n_corr[:,bin_idx]
         p_m1m2z = n_corr_at_idx * (Planck15.differential_comoving_volume(zs).to(u.Gpc**3/u.sr).value/(1+zs))/m1s/m2s
         return p_m1m2z
-
+    
 class Vt_Utils(Utils):    
     """
     Utilities for computing selection effects in GP 
@@ -1108,17 +1153,20 @@ class Rates(Utils):
         
         mu_z_dim                         ::    int
                                                number of mean functions for the GP. Can be 1
-                                               or None. Default is None which corresponds to mu_dim = number of
-                                               bins.
+                                               or None. Default is None which corresponds to mu_dim = 
+                                               number of bins.
         
         vt_sigmas                        ::    numpy.ndarray
-                                               1d array containing std values of emperically estimated VTs. Second output of
-                                               Vt_Utils.compute_vts. Default is None (Should not be None if vt_accuracy_check=True)
+                                               1d array containing std values of emperically estimated
+                                               VTs. Second output of Vt_Utils.compute_vts. Default is 
+                                               None (Should not be None if vt_accuracy_check=True)
         
         vt_accuracy_check                ::    bool
-                                               Whether or not to implement marginalization of Monte Carlo uncertainties in VT 
-                                               estimation. If True, samples from the posterior on Eq. B11. If False (default),
-                                               samples from the posterior in Eq. A6.
+                                               Whether or not to implement marginalization of Monte 
+                                               Carlo uncertainties in VT estimation. If True,
+                                               samples from the posterior on Eq. B11. If False 
+                                               (default), samples from the posterior in Eq. A6.
+        
                                                
         
         Returns
@@ -1156,7 +1204,7 @@ class Rates(Utils):
             length_scale_z = pm.Lognormal('length_scale_z',mu=ls_mean_z,sigma=ls_sd_z)
             covariance_m = sigma*pm.gp.cov.ExpQuad(input_dim=2,ls=[length_scale_m,length_scale_m])
             covariance_z = sigma*pm.gp.cov.ExpQuad(input_dim=1,ls=[length_scale_z])
-            gp = pm.gp.LatentKron(cov_funcs=[covariance_z, covariance_m])
+            gp = pm.gp.LatentKron(cov_funcs=[covariance_z, covariance_m]) 
             logn_corr = gp.prior('logn_corr',Xs=[log_bin_centers_z,log_bin_centers_m])
             logn_tot = pm.Deterministic('logn_tot', mu+logn_corr)
             n_corr = pm.Deterministic('n_corr',tt.exp(logn_tot))
@@ -1196,8 +1244,9 @@ class Rates(Utils):
         
         mu_z_dim                         ::    int
                                                number of mean functions for the GP. Can be 1
-                                               or None. Default is None which corresponds to mu_dim = number of
-                                               bins.
+                                               or None. Default is None which corresponds to mu_dim = 
+                                               number of bins.
+        
         
         Returns
         -------
@@ -1219,9 +1268,10 @@ class Rates(Utils):
             length_scale_z = pm.Lognormal('length_scale_z',mu=ls_mean_z,sigma=ls_sd_z)
             covariance_m = sigma*pm.gp.cov.ExpQuad(input_dim=2,ls=[length_scale_m,length_scale_m])
             covariance_z = sigma*pm.gp.cov.ExpQuad(input_dim=1,ls=[length_scale_z])
-            gp = pm.gp.LatentKron(cov_funcs=[covariance_z, covariance_m])
-            logn_corr = gp.prior('logn_corr',X=log_bin_centers)
+            gp = pm.gp.LatentKron(cov_funcs=[covariance_z, covariance_m]) 
+            logn_corr = gp.prior('logn_corr',Xs=[log_bin_centers_z,log_bin_centers_m])
             logn_tot = pm.Deterministic('logn_tot', mu+logn_corr)
             n_corr = pm.Deterministic('n_corr',tt.exp(logn_tot))
         
         return gp_model
+    
