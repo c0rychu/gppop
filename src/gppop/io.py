@@ -14,6 +14,8 @@ from sklearn.gaussian_process.kernels import RBF
 import h5py
 from popsummary import popresult
 import pandas as pd
+import tempfile
+
 
 ############################
 #  Support Functions       #
@@ -348,13 +350,24 @@ def write_results_to_metafile(metafilename,trace_file_posterior,trace_file_prior
             
             hyper_samples = np.concatenate((gp_output.lambda_m_samples, gp_output.lambda_z_samples, gp_output.sigma_samples, gp_output.mu_samples,gp_output.n_corr_samples),axis = 1)
             popsummary.set_hyperparameter_samples(hyper_samples,overwrite = overwrite, group = group)
-                
-            reweighted_pe_samples = np.zeros([pe_samples.shape[0], n_draw_pe, gp_output.N_samples, pe_samples.shape[-1]])
-            for i in range(pe_samples.shape[0]):
-                print(f"re-weighting {i}th event's pe samples using hyper-{group}")
-                reweighted_pe_samples[i,:,:,:] = gp_output.reweight_pe_samples(pe_samples[i], n_corr_sample=gp_output.n_corr_samples, m1m2z_prior=None if all(pe_prior[i]== 1.0) else pe_prior[i], size=n_draw_pe)
-            
-            popsummary.set_reweighted_event_samples(reweighted_pe_samples,overwrite = overwrite, group = group)
+
+            MAX_AVALABLE_RAM_GB = 8.0
+            estimated_mem_usage_GB = (pe_samples.shape[0] * n_draw_pe * gp_output.N_samples * pe_samples.shape[-1]) * 8 / 1e9
+            with tempfile.NamedTemporaryFile() as f:
+                if estimated_mem_usage_GB < MAX_AVALABLE_RAM_GB:
+                    reweighted_pe_samples = np.zeros([pe_samples.shape[0], n_draw_pe, gp_output.N_samples, pe_samples.shape[-1]])
+                else:
+                    print(f"Estimated memory usage: {estimated_mem_usage_GB:.2f} GB > {MAX_AVALABLE_RAM_GB} GB. Use memmap to save memory")
+                    print(f"Temp file: {f.name}")
+                    reweighted_pe_samples = np.memmap(f,
+                                                      mode='w+',
+                                                      shape=(pe_samples.shape[0], n_draw_pe, gp_output.N_samples, pe_samples.shape[-1]),
+                                                      dtype="float64")
+                for i in range(pe_samples.shape[0]):
+                    print(f"re-weighting {i}th event's pe samples using hyper-{group}")
+                    reweighted_pe_samples[i,:,:,:] = gp_output.reweight_pe_samples(pe_samples[i], n_corr_sample=gp_output.n_corr_samples, m1m2z_prior=None if all(pe_prior[i]== 1.0) else pe_prior[i], size=n_draw_pe)
+
+                popsummary.set_reweighted_event_samples(reweighted_pe_samples,overwrite = overwrite, group = group)
             reweight_pe_samples = [ ]
             
             reweighted_injections = np.zeros([n_draw_inj,1, gp_output.N_samples, 9])
