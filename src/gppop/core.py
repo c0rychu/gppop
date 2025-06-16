@@ -5,13 +5,13 @@ __author__="Anarya Ray <anarya.ray@ligo.org>; Siddharth Mohite <siddharth.mohite
 import numpy as np
 from scipy.stats import multivariate_normal,norm,halfnorm,lognorm
 import pymc as pm
-import aesara.tensor as tt
+import pytensor
+from pytensor import tensor as tt
 import pymc.math as math
 from pymc.gp.util import plot_gp_dist
 from astropy.cosmology import Planck15,z_at_value
 from astropy import units as u
 from scipy.interpolate import interp1d
-from scipy.integrate import cumtrapz
 from tqdm import tqdm
 import warnings
 

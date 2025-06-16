@@ -1,38 +1,59 @@
-[project]
-name = "gppop"  # Required
-version = "0.0.1"  # Required
-description = "Non-parametric inference of the population of compact binaries from gravitational wave observations using binned Gaussian processes. Methods paper: https://arxiv.org/abs/2304.08046"  # Optional
-readme = "README.md" # Optional
-requires-python = ">=3.9"
-license = {file = "LICENSE"}
-authors = [
-  {name = "Anarya Ray", email = "anarya@uwm.edu" },
-  {name = "Siddharth Mohite", email = "srmohite@uwm.edu" } # Optional
-]
-maintainers = [
-  {name = "Anarya Ray", email = "anarya@uwm.edu" } # Optional
-]
-
-dependencies = [ # Optional
-  "numpy",
-  "scipy",
-  "h5py",
-  "pymc == 4.0.0b6",
-  "aesara == 2.5.1",
-  "astropy",
-  "scikit-learn == 1.2.0",
-  "arviz == 0.14.0",
-  "pesummary",
-  "popsummary@git+https://git.ligo.org/zoheyr-doctor/popsummary.git"
-]
-
-[tool.poetry.scripts]
-"run_gppop" = {source = "bin/run_gppop"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
+
+requires = [ "hatchling" ]
+
+[project]
+name = "gppop"
+version = "0.1.0"
+description = "Non-parametric inference of the population of compact binaries from gravitational wave observations using binned Gaussian processes. Methods paper: https://arxiv.org/abs/2304.08046" # Optional
+readme = "README.md"
+license = { file = "LICENSE" }
+maintainers = [
+  { name = "Anarya Ray", email = "anarya@uwm.edu" },
+]
+
+authors = [
+  { name = "Anarya Ray", email = "anarya@uwm.edu" },
+  { name = "Siddharth Mohite", email = "srmohite@uwm.edu" },
+  { name = "Yu-Kuang (Cory) Chu", email = "cory@gwlab.page" },
+  { name = "Yu-Ping (Peter) Teng", email = "yteng@uwm.edu" },
+]
+requires-python = ">=3.10,<3.12"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+  "arviz>=0.17.1",
+  "astropy",
+  "h5py",
+  "numpy>=1.25,<2",
+  "pesummary",
+  "popsummary @ git+https://git.ligo.org/zoheyr-doctor/popsummary.git",
+  "pymc>=5.12",
+  "scikit-learn>=1.2",
+  "scipy",
+]
+
+optional-dependencies.jax = [
+  "numpyro>=0.18",
+]
+scripts.run_gppop = "gppop.cli:main"
+
+[dependency-groups]
+dev = [
+  "pyproject-fmt>=2.5.1",
+  "ruff>=0.11.6",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[tool.flake8]
+max-line-length = 120
